@@ -32,7 +32,7 @@ struct Market{
     EOrderStatus orderStatus;
     uint256 askAmount;
     uint256 maxAskAmount;
-    address payable currentOwner;
+    address currentOwner;
     address newOwner;
 } 
 
@@ -49,6 +49,9 @@ constructor(address wrapToken,
     _wrapToken = IERC20(wrapToken);
 }
 
+function setERC20Token (address erc20Token) external onlyOwner{
+        _wrapToken = IERC20(erc20Token); 
+}
 function setFeePercentage (uint256 value) external onlyOwner{
     _feePercentage = value; 
 }
@@ -96,10 +99,61 @@ function openMarket(address nftContractId, uint256 tokenId, uint256 price, EOrde
     markets[uniqueKey].maxAskAmount = maxPrice;
     markets[uniqueKey].contractAddress = nftContractId;
     markets[uniqueKey].tokenId = tokenId;
-    markets[uniqueKey].currentOwner = payable(msg.sender);
+    markets[uniqueKey].currentOwner = msg.sender;
+    // markets[uniqueKey].currentOwner = payable(msg.sender);
 }
 
-function closeMarketForFixedType(address nftContractId, uint256 tokenId ) external payable{ 
+// function closeMarketForFixedType(address nftContractId, uint256 tokenId ) external payable { 
+//     bytes32 uniqueKey = getPrivateUniqueKey(nftContractId,tokenId);
+    
+//     if(markets[uniqueKey].orderStatus == EOrderStatus.OpenForTheMarket){
+
+//         if(markets[uniqueKey].orderType == EOrderType.None){
+//             revert ("nft not opened");
+//         }      
+//         else if(markets[uniqueKey].orderType == EOrderType.Fixed){
+//             if(markets[uniqueKey].askAmount < msg.value){
+//                 revert ("Value not matched");
+//             }
+//         }else if (markets[uniqueKey].orderType == EOrderType.Auction){
+//            if(markets[uniqueKey].maxAskAmount < msg.value){
+//                 revert ("Value not matched");
+//             }
+//         }
+
+
+//         INFTContract nftContract = INFTContract(markets[uniqueKey].contractAddress);
+//         (uint256 royality, address creator) = nftContract.getRoyalityDetails(tokenId);
+
+
+
+//          //platform fee
+//         uint256 fee = getFeePercentage(msg.value, _feePercentage);
+//         _feeDestinationAddress.transfer(fee);
+
+//         // Royality 
+
+//         uint256 royalityFee = getFeePercentage(msg.value, royality);
+//         payable(creator).transfer(royalityFee);
+
+//         uint256 ownerShare = msg.value.sub(fee.add(royalityFee));
+
+//         // //seller amount trans 
+//         markets[uniqueKey].currentOwner.transfer(ownerShare);
+
+//         // transfer nft to new user 
+//         nftContract.safeTransferFrom(markets[uniqueKey].currentOwner, msg.sender, tokenId);
+
+//         // nft market close
+//         markets[uniqueKey].orderStatus = EOrderStatus.MarketClosed;
+//         markets[uniqueKey].newOwner = msg.sender;
+
+//     }else{
+//         revert ("Market order is not opened");
+//     }
+// }
+
+function closeMarketForFixedType(address nftContractId, uint256 tokenId, uint price ) external { 
     bytes32 uniqueKey = getPrivateUniqueKey(nftContractId,tokenId);
     
     if(markets[uniqueKey].orderStatus == EOrderStatus.OpenForTheMarket){
@@ -108,11 +162,11 @@ function closeMarketForFixedType(address nftContractId, uint256 tokenId ) extern
             revert ("nft not opened");
         }      
         else if(markets[uniqueKey].orderType == EOrderType.Fixed){
-            if(markets[uniqueKey].askAmount < msg.value){
+            if(markets[uniqueKey].askAmount < price){
                 revert ("Value not matched");
             }
         }else if (markets[uniqueKey].orderType == EOrderType.Auction){
-           if(markets[uniqueKey].maxAskAmount < msg.value){
+           if(markets[uniqueKey].maxAskAmount < price){
                 revert ("Value not matched");
             }
         }
@@ -124,18 +178,20 @@ function closeMarketForFixedType(address nftContractId, uint256 tokenId ) extern
 
 
          //platform fee
-        uint256 fee = getFeePercentage(msg.value, _feePercentage);
-        _feeDestinationAddress.transfer(fee);
-
+        uint256 fee = getFeePercentage(price, _feePercentage);
+        if(fee > 0){
+                _wrapToken.transferFrom(msg.sender ,_feeDestinationAddress,fee);
+            }
         // Royality 
 
-        uint256 royalityFee = getFeePercentage(msg.value, royality);
-        payable(creator).transfer(royalityFee);
+        uint256 royalityFee = getFeePercentage(price, royality);
+        _wrapToken.transferFrom(msg.sender,creator,royalityFee);
 
-        uint256 ownerShare = msg.value.sub(fee.add(royalityFee));
+
+        uint256 ownerShare = price.sub(fee.add(royalityFee));
 
         // //seller amount trans 
-        markets[uniqueKey].currentOwner.transfer(ownerShare);
+        _wrapToken.transferFrom( msg.sender,markets[uniqueKey].currentOwner,ownerShare);
 
         // transfer nft to new user 
         nftContract.safeTransferFrom(markets[uniqueKey].currentOwner, msg.sender, tokenId);
@@ -148,7 +204,6 @@ function closeMarketForFixedType(address nftContractId, uint256 tokenId ) extern
         revert ("Market order is not opened");
     }
 }
-
 function closeMarketForAuctionType(address nftContractId, uint256 tokenId, uint256 price, address buyerAccount ) external{
     bytes32 uniqueKey = getPrivateUniqueKey(nftContractId,tokenId);
 
